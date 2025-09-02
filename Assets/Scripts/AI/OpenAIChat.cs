@@ -36,7 +36,7 @@ public class OpenAIChat : MonoBehaviour
 
     [Header("Model/Endpoint")]
     public string model = "gpt-4o-mini";
-    public string endpoint = "https://api.openai.com/v1/responses";
+    public string endpoint = "https://conflict-game.vercel.app/api/chat";
 
     [Header("Auth (테스트용)")]
     [Tooltip("배포 전 반드시 환경변수/프록시로 전환")]
@@ -291,8 +291,6 @@ public class OpenAIChat : MonoBehaviour
     /// </summary>
     public async Task RunTurn(string playerUtterance)
     {
-        if (!EnsureAuth()) return;
-
         // 1) NPC 응답(정확히 2줄)
         var reply = await SendChatTwoLineAsync(systemPrompt, playerUtterance);
         if (!string.IsNullOrEmpty(reply))
@@ -301,22 +299,11 @@ public class OpenAIChat : MonoBehaviour
             UIManager.Instance.AddChatMessage(reply, false);
         }
 
-        // 2) 채점(그대로 유지)
+        // 2) 채점
         var score = await EvaluateTurnAsync(playerUtterance);
         if (score != null) UpdateScoreUI(score);
     }
 
-    bool EnsureAuth()
-    {
-        var key = "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";
-        if (string.IsNullOrEmpty(key))
-        {
-            Debug.LogError("API 키가 비어있음. apiKey에 테스트용 키 입력 또는 환경변수 설정 필요.");
-            return false;
-        }
-        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", key);
-        return true;
-    }
 
     string GetApiKey()
     {
@@ -340,38 +327,31 @@ public class OpenAIChat : MonoBehaviour
         var payload = new
         {
             model = model,
-            input = new object[] {
-                new { role = "system", content = system },
-                new { role = "user",   content = user   }
-            }
-            // 텍스트만 받을 땐 text.format 지정 필요 없음
+            systemPrompt = system,
+            userPrompt = user
         };
 
         var json = JsonConvert.SerializeObject(payload);
-        HttpResponseMessage resp;
-        string body;
-
         try
         {
-            resp = await http.PostAsync(
+            var resp = await http.PostAsync(
                 endpoint,
                 new StringContent(json, Encoding.UTF8, "application/json")
             );
-            body = await resp.Content.ReadAsStringAsync();
+            var body = await resp.Content.ReadAsStringAsync();
+
+            if (!resp.IsSuccessStatusCode)
+            {
+                Debug.LogError($"[CHAT] API Error {(int)resp.StatusCode}: {body}");
+                return "(API 오류)";
+            }
+            return ExtractText(body);
         }
         catch (System.Exception ex)
         {
             Debug.LogError($"[CHAT] 네트워크 예외: {ex}");
             return "(네트워크 오류)";
         }
-
-        if (!resp.IsSuccessStatusCode)
-        {
-            Debug.LogError($"[CHAT] API Error {(int)resp.StatusCode}: {body}");
-            return "(API 오류)";
-        }
-
-        return ExtractText(body);
     }
 
     // B. 채점(Structured Outputs: text.format = json_schema)

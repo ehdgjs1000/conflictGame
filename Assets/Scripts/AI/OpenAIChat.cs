@@ -9,6 +9,7 @@ using Newtonsoft.Json.Linq;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using UnityEngine.Networking; // ★ WebGL에서 UnityWebRequest 사용
 
 [Serializable] public class TwoLineReply { public string line1; public string line2; }
 [Serializable] public class ConflictScore { public float empathy, clarity, solution, realism; public string rationale; }
@@ -123,6 +124,36 @@ public class OpenAIChat : MonoBehaviour
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
+    // 공통: JSON POST (플랫폼별 분기)
+    async Task<string> PostJsonAsync(string url, string json)
+    {
+#if UNITY_WEBGL && !UNITY_EDITOR
+        // ★ WebGL: UnityWebRequest 사용
+        var req = new UnityWebRequest(url, "POST");
+        var body = Encoding.UTF8.GetBytes(json);
+        req.uploadHandler = new UploadHandlerRaw(body);
+        req.downloadHandler = new DownloadHandlerBuffer();
+        req.SetRequestHeader("Content-Type", "application/json");
+        req.SetRequestHeader("Accept", "application/json");
+
+        var op = req.SendWebRequest();
+        while (!op.isDone) await Task.Yield();
+
+        if (req.result != UnityWebRequest.Result.Success)
+            throw new Exception($"UWR error: {req.error}, code={req.responseCode}, body={req.downloadHandler.text}");
+
+        return req.downloadHandler.text;
+#else
+        // 에디터/스탠드얼론/모바일: HttpClient 사용
+        http.DefaultRequestHeaders.Clear(); // 혹시 모를 잔여 헤더 제거
+        var resp = await http.PostAsync(url, new StringContent(json, Encoding.UTF8, "application/json"));
+        var bodyText = await resp.Content.ReadAsStringAsync();
+        if (!resp.IsSuccessStatusCode)
+            throw new Exception($"HTTP {(int)resp.StatusCode}: {bodyText}");
+        return bodyText;
+#endif
+    }
+
     // A. 2줄 응답 요청(Structured Output)
     async Task<string> SendChatTwoLineAsync(string system, string user)
     {
@@ -168,15 +199,7 @@ public class OpenAIChat : MonoBehaviour
         string json = JsonConvert.SerializeObject(payload);
         try
         {
-            var resp = await http.PostAsync(endpoint,
-                new StringContent(json, Encoding.UTF8, "application/json"));
-            var body = await resp.Content.ReadAsStringAsync();
-
-            if (!resp.IsSuccessStatusCode)
-            {
-                Debug.LogError($"[2LINE] API {(int)resp.StatusCode}: {body}");
-                return "(API 오류)";
-            }
+            var body = await PostJsonAsync(endpoint, json);
 
             // 파싱
             var jo = JObject.Parse(body);
@@ -228,15 +251,7 @@ public class OpenAIChat : MonoBehaviour
 
         try
         {
-            var resp = await http.PostAsync(endpoint,
-                new StringContent(json, Encoding.UTF8, "application/json"));
-            var body = await resp.Content.ReadAsStringAsync();
-
-            if (!resp.IsSuccessStatusCode)
-            {
-                Debug.LogError($"[CHAT] API {(int)resp.StatusCode}: {body}");
-                return "(API 오류)";
-            }
+            var body = await PostJsonAsync(endpoint, json);
             return ExtractText(body);
         }
         catch (Exception ex)
@@ -249,7 +264,6 @@ public class OpenAIChat : MonoBehaviour
     // C. 채점(Structured Output)
     async Task<ConflictScore> EvaluateTurnAsync(string playerUtterance)
     {
-
         var payload = new
         {
             model = model,
@@ -286,19 +300,10 @@ public class OpenAIChat : MonoBehaviour
             }
         };
 
-        
         var json = JsonConvert.SerializeObject(payload);
         try
         {
-            var resp = await http.PostAsync(endpoint,
-                new StringContent(json, Encoding.UTF8, "application/json"));
-            var body = await resp.Content.ReadAsStringAsync();
-            var body2 = await resp.Content.ReadAsStringAsync();
-            if (!resp.IsSuccessStatusCode)
-            {
-                Debug.LogError($"[EVAL] API {(int)resp.StatusCode}: {body}");
-                return null;
-            }
+            var body = await PostJsonAsync(endpoint, json);
 
             if (TryExtractScore(body, out var score)) return score;
 

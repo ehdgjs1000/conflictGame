@@ -248,6 +248,7 @@ public class OpenAIChat : MonoBehaviour
     // C. Ã¤Á¡(Structured Output)
     async Task<ConflictScore> EvaluateTurnAsync(string playerUtterance)
     {
+
         var payload = new
         {
             model = model,
@@ -284,13 +285,14 @@ public class OpenAIChat : MonoBehaviour
             }
         };
 
+        
         var json = JsonConvert.SerializeObject(payload);
         try
         {
             var resp = await http.PostAsync(endpoint,
                 new StringContent(json, Encoding.UTF8, "application/json"));
             var body = await resp.Content.ReadAsStringAsync();
-
+            var body2 = await resp.Content.ReadAsStringAsync();
             if (!resp.IsSuccessStatusCode)
             {
                 Debug.LogError($"[EVAL] API {(int)resp.StatusCode}: {body}");

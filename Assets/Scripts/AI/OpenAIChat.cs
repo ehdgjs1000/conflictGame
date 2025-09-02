@@ -49,6 +49,7 @@ public class OpenAIChat : MonoBehaviour
 
         // 혹시 이전에 남은 헤더가 있으면 제거(Authorization 금지)
         try { http.DefaultRequestHeaders.Clear(); } catch { }
+        Debug.Log($"[ENDPOINT] {endpoint}");
     }
 
     string BuildSystemPrompt()

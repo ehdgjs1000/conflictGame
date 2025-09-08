@@ -42,7 +42,7 @@ public class OpenAIChat : MonoBehaviour
     };
 
     bool _isBusy;
-    int conversationCount = 0;
+    public int conversationCount = 0;
 
     async void Start()
     {
@@ -76,9 +76,9 @@ public class OpenAIChat : MonoBehaviour
     }
     public void EndConversationOnClick()
     {
-
+        if (conversationCount <= 5) Debug.Log("아직 끝낼 수 없다");
+        else EndConversation();
     }
-
     public async void EndConversation()
     {
         sendButton.interactable = false;
@@ -93,7 +93,7 @@ public class OpenAIChat : MonoBehaviour
             $"플레이어의 대화 결과:\n" +
             $"공감 {emp:0.#}, 명확성 {cla:0.#}, 해결지향 {sol:0.#}, 현실적합성 {rea:0.#}.\n" +
             "이 점수를 바탕으로 더 좋은 대화 방식을 제안해줘. " +
-            "구체적이고 간단하게 3줄 이내 한국어로.";
+            "구체적이고 간단하게 3줄 이내 한국어로 각 줄은 번호로 구분해줘.";
 
         var feedback = await SendChatOnceAsync(feedBackPrompt, prompt);
         UIManager.Instance.ShowEndPanel(feedback);

@@ -14,6 +14,8 @@ public class UIManager : MonoBehaviour
 
     [SerializeField] Text[] scoreTexts;
     [SerializeField] Image[] scoreImages;
+    [SerializeField] Image step9Image;
+    [SerializeField] Sprite[] step9Sprites;
     public GameObject endPanel;
     public TMP_Text feedbackText;
 
@@ -25,7 +27,7 @@ public class UIManager : MonoBehaviour
     int evalCount;
 
     public ScrollRect scrollRect;
-
+    public Image conversationProgressBar;
 
     private void Awake()
     {
@@ -54,7 +56,7 @@ public class UIManager : MonoBehaviour
         sumEmpathy = sumClarity = sumSolution = sumRealism = 0f;
         evalCount = 0;
         // 초기 점수 0으로 클리어하고 싶으면:
-        UIManager.Instance.SetScores(new float[] { 0, 0, 0, 0 });
+        SetScores(new float[] { 0, 0, 0, 0 });
     }
     public void SetScores(float[] scores)
     {
@@ -67,7 +69,15 @@ public class UIManager : MonoBehaviour
         }
         scoreTexts[4].text = scoreSum.ToString("0.#"); ;
         scoreImages[4].fillAmount = scoreSum / 100.0f;
-        if(scoreSum <= 20) AI.EndConversation();
+        if(scoreSum <= 20 && AI.conversationCount > 5) AI.EndConversation();
+        scoreSum = Mathf.Clamp(scoreSum, 0f, 100f);
+        int scoreIndex = Mathf.FloorToInt(scoreSum / 10f);
+        if(evalCount > 5)
+        {
+            if (scoreIndex >= 8) scoreIndex = 8;
+            step9Image.sprite = step9Sprites[scoreIndex];
+        }
+        
     }
 
     public void SetAIMessage(string _msg)
@@ -103,6 +113,7 @@ public class UIManager : MonoBehaviour
         sumSolution += Mathf.Clamp(s.solution, 0f, 25f);
         sumRealism += Mathf.Clamp(s.realism, 0f, 25f);
         evalCount++;
+        conversationProgressBar.fillAmount = (float)(evalCount / 20);
 
         // 2) 평균(0~25)
         float avgEmpathy = sumEmpathy / evalCount;
@@ -111,10 +122,7 @@ public class UIManager : MonoBehaviour
         float avgRealism = sumRealism / evalCount;
 
         // 3) UI 업데이트 (UIManager는 0~25 값으로 받음)
-        UIManager.Instance.SetScores(new float[] {
-        avgEmpathy, avgClarity, avgSolution, avgRealism
-        
-    });
+        SetScores(new float[] {avgEmpathy, avgClarity, avgSolution, avgRealism});
 
     }
     public void ToLobbyOnClick()

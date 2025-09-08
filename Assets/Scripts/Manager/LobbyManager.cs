@@ -5,10 +5,16 @@ using TMPro;
 
 public class LobbyManager : MonoBehaviour
 {
+    public static LobbyManager instance;
+    [SerializeField] GameObject myDataPanel;
+
     [Header("UI")]
     public Button btnPublic;
     public Button btnPersonal;
     public Button btnGroup;
+    public Button btnLover;
+    public Button btnFamily;
+    public Button btnSchool;
     public TMP_InputField topicInput;
     public TMP_InputField counterpartInput;
     public Button startButton;
@@ -20,16 +26,44 @@ public class LobbyManager : MonoBehaviour
     int otherAge;
     int otherGender;
 
+    public string nickname,age,personality,job,academic,home;
+    public int gender;
+
     void Awake()
     {
+        if (instance == null) instance = this;
+
         // 버튼 바인딩
         if (btnPublic) btnPublic.onClick.AddListener(() => OnSelectCategory("공공"));
         if (btnPersonal) btnPersonal.onClick.AddListener(() => OnSelectCategory("개인"));
         if (btnGroup) btnGroup.onClick.AddListener(() => OnSelectCategory("조직"));
+        if (btnGroup) btnLover.onClick.AddListener(() => OnSelectCategory("연인"));
+        if (btnGroup) btnFamily.onClick.AddListener(() => OnSelectCategory("가족"));
+        if (btnGroup) btnSchool.onClick.AddListener(() => OnSelectCategory("학교"));
         if (startButton) startButton.onClick.AddListener(OnClickStart);
 
         otherAge = -1;
         otherGender = -1;
+    }
+    private void Start()
+    {
+        UpdateMyData();
+    }
+    public void UpdateMyData()
+    {
+        gender = PlayerPrefs.GetInt("Gender");
+        nickname = PlayerPrefs.GetString("Nickname");
+        age = PlayerPrefs.GetString("Age");
+        personality = PlayerPrefs.GetString("Personality");
+        job = PlayerPrefs.GetString("Job");
+        academic = PlayerPrefs.GetString("Academic");
+        home = PlayerPrefs.GetString("Home");
+
+        if(!PlayerPrefs.HasKey("Gender") || !PlayerPrefs.HasKey("Nickname") || !PlayerPrefs.HasKey("Age") || !PlayerPrefs.HasKey("Personality") || !PlayerPrefs.HasKey("Job") || !PlayerPrefs.HasKey("Academic") || !PlayerPrefs.HasKey("Home"))
+        {
+            myDataPanel.SetActive(true);
+        }
+
     }
     public void GenderOnClick(int gender)
     {

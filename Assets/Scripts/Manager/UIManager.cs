@@ -10,6 +10,7 @@ public class UIManager : MonoBehaviour
     public static UIManager Instance { get; private set; }
 
     [SerializeField] Text reponseText;
+    [SerializeField] OpenAIChat AI;
 
     [SerializeField] Text[] scoreTexts;
     [SerializeField] Image[] scoreImages;
@@ -66,6 +67,7 @@ public class UIManager : MonoBehaviour
         }
         scoreTexts[4].text = scoreSum.ToString("0.#"); ;
         scoreImages[4].fillAmount = scoreSum / 100.0f;
+        if(scoreSum <= 20) AI.EndConversation();
     }
 
     public void SetAIMessage(string _msg)
@@ -111,6 +113,7 @@ public class UIManager : MonoBehaviour
         // 3) UI 업데이트 (UIManager는 0~25 값으로 받음)
         UIManager.Instance.SetScores(new float[] {
         avgEmpathy, avgClarity, avgSolution, avgRealism
+        
     });
 
     }

@@ -31,6 +31,7 @@ public class OpenAIChat : MonoBehaviour
     public string endpoint = "https://conflict-game.vercel.app/api/chat";
 
     [Header("UI: 입력/버튼")]
+    [SerializeField] TextMeshProUGUI remainCountText;
     public TMP_InputField inputTMP;
     public TextMeshProUGUI placeHolderText;
     public Button sendButton;
@@ -41,6 +42,7 @@ public class OpenAIChat : MonoBehaviour
     };
 
     bool _isBusy;
+    int conversationCount = 0;
 
     async void Start()
     {
@@ -71,6 +73,10 @@ public class OpenAIChat : MonoBehaviour
           $"너의 나이는 '{age}', 성별은 '{gender}', 성격유형은 '{mbti}'이다. " +
           $"상대방의 나이는 '{otherAge}대', 상대방의 성별은 '{otherGenderText}'이다. " +
           $"상황에 맞는 현실적 제약과 상황을 반영하라. 정확히 2줄로만 답하라(각 60자 이내). 한국어.";
+    }
+    public void EndConversationOnClick()
+    {
+
     }
 
     public async void EndConversation()
@@ -105,6 +111,9 @@ public class OpenAIChat : MonoBehaviour
         await RunTurn(userText);
         ClearInput();
         SetBusy(false);
+        conversationCount++;
+        remainCountText.text = $"{conversationCount}/20";
+        if (conversationCount > 20) EndConversation();
     }
 
     /// <summary> 플레이어 발화 → 2줄 NPC응답 + 채점 </summary>

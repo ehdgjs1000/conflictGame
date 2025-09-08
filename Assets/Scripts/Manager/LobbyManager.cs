@@ -13,6 +13,7 @@ public class LobbyManager : MonoBehaviour
     public TMP_InputField counterpartInput;
     public Button startButton;
     public TMP_Text messageText;
+    public TMP_Text subMessageText;
 
     string selectedCategory = null;
 
@@ -52,22 +53,22 @@ public class LobbyManager : MonoBehaviour
         var counterpart = counterpartInput ? counterpartInput.text.Trim() : "";
         if (string.IsNullOrEmpty(selectedCategory))
         {
-            if (messageText) messageText.text = "대주제를 선택해 주세요.";
+            if (subMessageText) subMessageText.text = "대주제를 선택해 주세요.";
             return;
         }
         if (string.IsNullOrEmpty(selectedCategory))
         {
-            if (messageText) messageText.text = "갈등상대를 입력해 주세요.";
+            if (subMessageText) subMessageText.text = "갈등상대를 입력해 주세요.";
             return;
         }
         if (string.IsNullOrEmpty(topic))
         {
-            if (messageText) messageText.text = "메인 주제를 입력해 주세요.";
+            if (subMessageText) subMessageText.text = "메인 주제를 입력해 주세요.";
             return;
         }
         if(otherAge == -1)
         {
-            if (messageText) messageText.text = "상대 나이를 골라주세요";
+            if (subMessageText) subMessageText.text = "상대 나이를 골라주세요";
             return;
         }
         if (otherGender == -1)

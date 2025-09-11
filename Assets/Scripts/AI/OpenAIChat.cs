@@ -12,7 +12,17 @@ using TMPro;
 using UnityEngine.Networking; // ★ WebGL에서 UnityWebRequest 사용
 
 [Serializable] public class TwoLineReply { public string line1; public string line2; }
-[Serializable] public class ConflictScore { public float empathy, clarity, solution, realism; public string rationale; }
+[Serializable]
+public class ConflictScore
+{
+    public float empathy, clarity, solution, realism;
+    public string rationale;
+    public bool isResolved;     // 추가
+    public bool isEscalated;    // 추가
+    public float resolvedConfidence;   // 0.0 ~ 1.0
+    public float escalatedConfidence;  // 0.0 ~ 1.0
+}
+
 
 public class OpenAIChat : MonoBehaviour
 {
@@ -41,14 +51,69 @@ public class OpenAIChat : MonoBehaviour
         Timeout = TimeSpan.FromSeconds(30)
     };
 
+    [SerializeField] private bool debugEndDecisionLogs = true;
+    [SerializeField] private int minTurnForEndCheck = 7;    // 종료 판정 최소 턴
+    [SerializeField] private float confidenceThreshold = 0.70f; // 신뢰도 임계치
+    [SerializeField] private int streakNeeded = 2;     // 연속 만족 횟수(히스테리시스)
+
+    private int resolvedStreak = 0;
+    private int escalatedStreak = 0;
     bool _isBusy;
     public int conversationCount = 0;
+
+    struct Thresholds
+    {
+        public float Emp;
+        public float Sol;
+        public float ClaPlusRea; // 필요 없으면 0
+    }
+
+    void LogEndDecision(string rule, ConflictScore s, Thresholds? th = null)
+    {
+        if (!debugEndDecisionLogs) return;
+
+        // 마지막 턴 점수(이번 평가치)
+        float e = s?.empathy ?? -1;
+        float c = s?.clarity ?? -1;
+        float so = s?.solution ?? -1;
+        float r = s?.realism ?? -1;
+
+        // 평균(누적 기준)
+        float avgE = UIManager.Instance.GetAverage("empathy");
+        float avgC = UIManager.Instance.GetAverage("clarity");
+        float avgS = UIManager.Instance.GetAverage("solution");
+        float avgR = UIManager.Instance.GetAverage("realism");
+
+        string thStr = "";
+        if (th.HasValue)
+        {
+            var t = th.Value;
+            var parts = new System.Collections.Generic.List<string>();
+            if (t.Emp > 0) parts.Add($"Emp≥{t.Emp} or ≤{t.Emp}");
+            if (t.Sol > 0) parts.Add($"Sol≥{t.Sol} or ≤{t.Sol}");
+            if (t.ClaPlusRea > 0) parts.Add($"(Cla+Rea)≥{t.ClaPlusRea}");
+            thStr = $" | thresholds: {string.Join(", ", parts)}";
+        }
+
+        string msg =
+            $"[END_DECISION] rule={rule} | turn={conversationCount} " +
+            $"| flags: isResolved={s?.isResolved}({s?.resolvedConfidence:0.00}), " +
+            $"isEscalated={s?.isEscalated}({s?.escalatedConfidence:0.00}) " +
+            $"| last: Emp={e:0.#}, Cla={c:0.#}, Sol={so:0.#}, Rea={r:0.#} " +
+            $"| avg: Emp={avgE:0.#}, Cla={avgC:0.#}, Sol={avgS:0.#}, Rea={avgR:0.#} " +
+            $"{thStr} " +
+            $"| rationale: {(string.IsNullOrEmpty(s?.rationale) ? "(none)" : s.rationale)}";
+
+        Debug.Log(msg);
+    }
 
     async void Start()
     {
         // 주제 세팅
         systemPrompt = BuildSystemPrompt();
         UIManager.Instance.ResetAverages();
+        string topic = GameSession.Instance.mainTopic;
+        UIManager.Instance.UpdateTopic(topic);
 
         // 혹시 이전에 남은 헤더가 있으면 제거(Authorization 금지)
         try { http.DefaultRequestHeaders.Clear(); } catch { }
@@ -68,18 +133,18 @@ public class OpenAIChat : MonoBehaviour
         string otherGenderText = (otherGender == 0) ? "남자" : "여자";
 
         return
-          $"너는 갈등 시뮬레이터의 '{counterpart}' NPC다. " +
+          $"너는 갈등 시뮬레이터의 '{counterpart}'(이)다. " +
           $"대주제는 '{cat}', 메인 주제는 '{topic}'이다. " +
           $"너의 나이는 '{age}', 성별은 '{gender}', 성격유형은 '{mbti}'이다. " +
           $"상대방의 나이는 '{otherAge}대', 상대방의 성별은 '{otherGenderText}'이다. " +
-          $"상황에 맞는 현실적 제약과 상황을 반영하라. 정확히 2줄로만 답하라(각 60자 이내). 한국어.";
+          $"너의 나이, 성격에 맞는 현실적 제약과 상황을 반영하라. 정확히 2줄로만 답하라(각 60자 이내). 한국어.";
     }
     public void EndConversationOnClick()
     {
         if (conversationCount <= 5) Debug.Log("아직 끝낼 수 없다");
-        else EndConversation();
+        else EndConversation("대화종료");
     }
-    public async void EndConversation()
+    public async void EndConversation(string _reason)
     {
         sendButton.interactable = false;
         inputTMP.interactable = false;
@@ -96,7 +161,7 @@ public class OpenAIChat : MonoBehaviour
             "구체적이고 간단하게 3줄 이내 한국어로 각 줄은 번호로 구분해줘.";
 
         var feedback = await SendChatOnceAsync(feedBackPrompt, prompt);
-        UIManager.Instance.ShowEndPanel(feedback);
+        UIManager.Instance.ShowEndPanel(feedback,_reason);
     }
 
     public async void SendMessageOnClick()
@@ -113,13 +178,13 @@ public class OpenAIChat : MonoBehaviour
         SetBusy(false);
         conversationCount++;
         remainCountText.text = $"{conversationCount}/20";
-        if (conversationCount > 20) EndConversation();
+        if (conversationCount > 20) EndConversation("갈등을 해결하지 못하였습니다.");
     }
 
     /// <summary> 플레이어 발화 → 2줄 NPC응답 + 채점 </summary>
     public async Task RunTurn(string playerUtterance)
     {
-        // 1) NPC 응답(정확히 2줄)
+        // 1) NPC 2줄 응답
         var reply = await SendChatTwoLineAsync(systemPrompt, playerUtterance);
         if (!string.IsNullOrEmpty(reply))
         {
@@ -127,11 +192,92 @@ public class OpenAIChat : MonoBehaviour
             UIManager.Instance.AddChatMessage(reply, false);
         }
 
-        // 2) 채점
+        // 2) 채점 + 종료 판단
         var score = await EvaluateTurnAsync(playerUtterance);
-        if (score != null) UpdateScoreUI(score);
+        if (score != null)
+        {
+            UpdateScoreUI(score);
+            CheckConflictEnd(score);    
+        }
     }
+    void CheckConflictEnd(ConflictScore s)
+    {
+        // 최소 턴 전에는 종료 판정 보류(관찰만)
+        if (conversationCount < minTurnForEndCheck)
+        {
+            if (debugEndDecisionLogs)
+                Debug.Log($"[END_DECISION] hold: turn={conversationCount} < minTurnForEndCheck={minTurnForEndCheck}");
+            return;
+        }
 
+        // 신뢰도 충족 여부
+        bool strongResolve = s.isResolved && s.resolvedConfidence >= confidenceThreshold;
+        bool strongEscalate = s.isEscalated && s.escalatedConfidence >= confidenceThreshold;
+
+        // 스택 업데이트
+        if (strongResolve && !strongEscalate)
+        {
+            resolvedStreak++;
+            escalatedStreak = 0;
+            LogEndDecision($"RESOLVED_SIGNAL(streak={resolvedStreak}/{streakNeeded})", s);
+
+            if (resolvedStreak >= streakNeeded)
+            {
+                LogEndDecision("END_BY_RESOLVED", s);
+                EndConversation("갈등이 충분히 해결되었습니다.");
+                return;
+            }
+        }
+        else if (strongEscalate && !strongResolve)
+        {
+            escalatedStreak++;
+            resolvedStreak = 0;
+            LogEndDecision($"ESCALATED_SIGNAL(streak={escalatedStreak}/{streakNeeded})", s);
+
+            if (escalatedStreak >= streakNeeded)
+            {
+                LogEndDecision("END_BY_ESCALATED", s);
+                EndConversation("갈등이 과도하게 고조되어 시뮬레이션을 종료합니다.");
+                return;
+            }
+        }
+        else
+        {
+            // 둘 다 false거나 상충 → 스택 리셋
+            if (debugEndDecisionLogs)
+                Debug.Log($"[END_DECISION] continue: ambiguous/ongoing. " +
+                          $"resolve({s.isResolved},{s.resolvedConfidence:0.00}), " +
+                          $"escalate({s.isEscalated},{s.escalatedConfidence:0.00})");
+            resolvedStreak = 0;
+            escalatedStreak = 0;
+        }
+
+        // --- 백업 휴리스틱(선택): 평균 점수 기반 보조 ---
+        float emp = UIManager.Instance.GetAverage("empathy");
+        float sol = UIManager.Instance.GetAverage("solution");
+        float cla = UIManager.Instance.GetAverage("clarity");
+        float rea = UIManager.Instance.GetAverage("realism");
+
+        // 해결 백업 규칙
+        if (conversationCount >= (minTurnForEndCheck + 1) && emp >= 18 && sol >= 18 && (cla + rea) >= 30)
+        {
+            LogEndDecision("BACKUP_RESOLVED(avg thresholds)", s, new Thresholds { Emp = 18, Sol = 18, ClaPlusRea = 30 });
+            EndConversation("갈등이 충분히 해결되었습니다.");
+            return;
+        }
+
+        // 고조 백업 규칙
+        if (conversationCount >= (minTurnForEndCheck + 2) && emp <= 8 && sol <= 8)
+        {
+            LogEndDecision("BACKUP_ESCALATED(avg thresholds)", s, new Thresholds { Emp = 8, Sol = 8 });
+            EndConversation("대화가 더 진행되기 어려운 상태로 판단됩니다.");
+            return;
+        }
+
+        if (debugEndDecisionLogs)
+            Debug.Log($"[END_DECISION] continue: no end yet. " +
+                      $"turn={conversationCount}, resolvedStreak={resolvedStreak}, escalatedStreak={escalatedStreak}");
+    }
     // ─────────────────────────────────────────────────────────────────────────────
     // 공통: JSON POST (플랫폼별 분기)
     async Task<string> PostJsonAsync(string url, string json)
@@ -273,17 +419,35 @@ public class OpenAIChat : MonoBehaviour
     // C. 채점(Structured Output)
     async Task<ConflictScore> EvaluateTurnAsync(string playerUtterance)
     {
+        // 현재 평균을 가져와서 모델 판단에 참고로 제공
+        float avgEmp = UIManager.Instance.GetAverage("empathy");
+        float avgCla = UIManager.Instance.GetAverage("clarity");
+        float avgSol = UIManager.Instance.GetAverage("solution");
+        float avgRea = UIManager.Instance.GetAverage("realism");
+
         var payload = new
         {
             model = model,
             input = new object[] {
-                new {
-                    role = "system",
-                    content = "너는 갈등 시뮬레이터의 심판이다. 플레이어 발화를 평가해 "+
-                              "empathy/clarity/solution/realism(각 0~25)과 rationale을 스키마에 맞춰 제공하라."
-                },
-                new { role = "user", content = playerUtterance }
+            new {
+                role = "system",
+                content =
+                    "너는 갈등 시뮬레이터의 심판이다. 플레이어 발화를 평가해 " +
+                    "empathy/clarity/solution/realism(각 0~25)과 rationale을 제공하고, " +
+                    "대화 상태를 판정하라. isResolved, isEscalated는 동시에 false일 수 있다(진행 중/불확실). " +
+                    "불확실하면 둘 다 false로 하고 rationale에 추가 근거를 서술하라. " +
+                    "해결(resolved)은 상호 이해 및 다음 행동 합의가 성립한 경우, " +
+                    "고조(escalated)는 상호 공격·대화 거부·관계 악화로 더 나아갈 수 없는 경우로 정의한다. " +
+                    "판정의 확신도를 0.0~1.0로 반환하라(resolvedConfidence, escalatedConfidence)."
             },
+            new {
+                role = "user",
+                content =
+                    $"플레이어 발화: {playerUtterance}\n" +
+                    $"현재 평균점수 - empathy:{avgEmp:0.#}, clarity:{avgCla:0.#}, solution:{avgSol:0.#}, realism:{avgRea:0.#}\n" +
+                    "평가와 판정을 스키마에 맞춰 반환하라."
+            }
+        },
             text = new
             {
                 format = new
@@ -299,9 +463,14 @@ public class OpenAIChat : MonoBehaviour
                             clarity = new { type = "integer", minimum = 0, maximum = 25 },
                             solution = new { type = "integer", minimum = 0, maximum = 25 },
                             realism = new { type = "integer", minimum = 0, maximum = 25 },
-                            rationale = new { type = "string" }
+                            rationale = new { type = "string" },
+                            isResolved = new { type = "boolean" },   // 추가
+                            isEscalated = new { type = "boolean" },    // 추가
+                            resolvedConfidence = new { type = "number", minimum = 0.0, maximum = 1.0 },
+                            escalatedConfidence = new { type = "number", minimum = 0.0, maximum = 1.0 }
                         },
-                        required = new[] { "empathy", "clarity", "solution", "realism", "rationale" },
+                        required = new[] { "empathy","clarity","solution","realism","rationale",
+                   "isResolved","isEscalated","resolvedConfidence","escalatedConfidence" },
                         additionalProperties = false
                     },
                     strict = true
@@ -313,7 +482,6 @@ public class OpenAIChat : MonoBehaviour
         try
         {
             var body = await PostJsonAsync(endpoint, json);
-
             if (TryExtractScore(body, out var score)) return score;
 
             Debug.LogError("[EVAL] 점수 파싱 실패\n" + body);

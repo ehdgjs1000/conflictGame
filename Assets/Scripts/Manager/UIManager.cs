@@ -11,6 +11,8 @@ public class UIManager : MonoBehaviour
 
     [SerializeField] Text reponseText;
     [SerializeField] OpenAIChat AI;
+    [SerializeField] TextMeshProUGUI endReasonText;
+    [SerializeField] TextMeshProUGUI topicText;
 
     [SerializeField] Text[] scoreTexts;
     [SerializeField] Image[] scoreImages;
@@ -39,6 +41,10 @@ public class UIManager : MonoBehaviour
         }
         Instance = this;
     }
+    public void UpdateTopic(string _topic)
+    {
+        topicText.text = _topic;
+    }
     public float GetAverage(string type)
     {
         if (type == "empathy") return sumEmpathy / evalCount;
@@ -46,10 +52,11 @@ public class UIManager : MonoBehaviour
         else if(type == "solution") return sumSolution / evalCount;
         else return sumRealism / evalCount;
     }
-    public void ShowEndPanel(string feedback)
+    public void ShowEndPanel(string feedback, string reason)
     {
         if (endPanel) endPanel.SetActive(true);
         if (feedbackText) feedbackText.text = feedback;
+        if (endReasonText) endReasonText.text = reason;
     }
     public void ResetAverages()
     {
@@ -69,7 +76,7 @@ public class UIManager : MonoBehaviour
         }
         scoreTexts[4].text = scoreSum.ToString("0.#"); ;
         scoreImages[4].fillAmount = scoreSum / 100.0f;
-        if(scoreSum <= 20 && AI.conversationCount > 5) AI.EndConversation();
+        if(scoreSum <= 20 && AI.conversationCount > 5) AI.EndConversation("갈등이 과도하게 고조되어 시뮬레이션을 종료합니다.");
         scoreSum = Mathf.Clamp(scoreSum, 0f, 100f);
         int scoreIndex = Mathf.FloorToInt(scoreSum / 10f);
         if(evalCount > 5)
@@ -113,7 +120,7 @@ public class UIManager : MonoBehaviour
         sumSolution += Mathf.Clamp(s.solution, 0f, 25f);
         sumRealism += Mathf.Clamp(s.realism, 0f, 25f);
         evalCount++;
-        conversationProgressBar.fillAmount = (float)(evalCount / 20);
+        conversationProgressBar.fillAmount = (float)((float)evalCount / 20);
 
         // 2) 평균(0~25)
         float avgEmpathy = sumEmpathy / evalCount;

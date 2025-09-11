@@ -40,8 +40,6 @@ public class MyData : MonoBehaviour
         if (job != null) jobInputField.text = job;
         if (academic != null) academicInputField.text = academic;
         if (home != null) homeInputField.text = home;
-        Debug.Log(nickname);
-        Debug.Log(age);
     }
 
     public void GenderBtnClick(int _gender)

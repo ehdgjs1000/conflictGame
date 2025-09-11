@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <title>Unity WebGL</title>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background: #000;
+            overflow: hidden;
+            touch-action: manipulation;
+        }
+        /* 내부 논리 해상도 1080x1920 고정 */
+        #unity-root {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            width: 1080px;
+            height: 1920px;
+            transform: translate(-50%, -50%); /* JS에서 scale만 추가 */
+            transform-origin: center center;
+            will-change: transform;
+        }
+        /* 기본 규칙(추가로 런타임에 전역 규칙도 주입함) */
+        #unity-canvas {
+            width: 1080px !important;
+            height: 1920px !important;
+            max-width: 1080px;
+            max-height: 1920px;
+            display: block;
+            background: #000;
+        }
+
+        #loading-cover {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            color: #fff;
+            font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+    <div id="unity-root">
+        <div id="loading-cover">Loading…</div>
+        <canvas id="unity-canvas" tabindex="-1"></canvas>
+    </div>
+
+    <script>
+        // ===== 설정값 =====
+        const LOGICAL_W = 1080, LOGICAL_H = 1920;
+
+        // 전역 규칙 강제 주입(Play 래퍼/인라인 스타일을 덮어쓰도록 !important)
+        (function injectGlobalRules() {
+            const css = `
+            canvas, #unity-canvas {
+              width: ${LOGICAL_W}px !important;
+              height: ${LOGICAL_H}px !important;
+              max-width: ${LOGICAL_W}px !important;
+              max-height: ${LOGICAL_H}px !important;
+              display: block !important;
+              background: #000 !important;
+            }
+            /* Unity Play가 감싸는 래퍼들 대비: 캔버스 부모들도 가로세로 제약 제거 */
+            .unityContainer, .webgl-content, .gameContainer, #gameContainer {
+              width: auto !important; height: auto !important;
+              max-width: none !important; max-height: none !important;
+            }
+            html, body { background: #000 !important; }
+          `;
+            const style = document.createElement('style');
+            style.setAttribute('data-portrait-lock', '1');
+            style.textContent = css;
+            document.head.appendChild(style);
+        })();
+
+        // 버퍼 선제 고정(엔진 로딩 전 300x150 방지)
+        (function enforceCanvasBuffer() {
+            const c = document.getElementById('unity-canvas');
+            c.width = LOGICAL_W;
+            c.height = LOGICAL_H;
+        })();
+
+        // viewport 계산(iframe/모바일 주소창/가용영역 대응)
+        function getViewportSize() {
+            const vv = window.visualViewport;
+            const vw = vv ? vv.width : 0;
+            const vh = vv ? vv.height : 0;
+            const w = Math.min(
+                vw || Infinity,
+                document.documentElement.clientWidth || Infinity,
+                window.innerWidth || Infinity
+            );
+            const h = Math.min(
+                vh || Infinity,
+                document.documentElement.clientHeight || Infinity,
+                window.innerHeight || Infinity
+            );
+            return {
+                w: isFinite(w) ? w : window.innerWidth,
+                h: isFinite(h) ? h : window.innerHeight
+            };
+        }
+
+        function fitToParent() {
+            const { w, h } = getViewportSize();
+            const sx = w / LOGICAL_W;
+            const sy = h / LOGICAL_H;
+            const scale = Math.min(sx, sy); // 9:16 유지, 레터박스 허용
+            const root = document.getElementById('unity-root');
+            root.style.transform = `translate(-50%, -50%) scale(${scale})`;
+        }
+
+        // 스타일/버퍼를 주기적으로 재검증 & 재강제 (Play 래퍼가 덮어써도 다시 덮자)
+        function reassertCanvas() {
+            const c = document.getElementById('unity-canvas') || document.querySelector('canvas');
+            if (!c) return;
+            // 버퍼 크기 보정
+            if (c.width !== LOGICAL_W || c.height !== LOGICAL_H) {
+                c.width = LOGICAL_W;
+                c.height = LOGICAL_H;
+            }
+            // 스타일 보정(혹시 인라인으로 width: 100% 같은 게 붙으면 덮어씀)
+            const needFix =
+                c.style.width !== `${LOGICAL_W}px` ||
+                c.style.height !== `${LOGICAL_H}px`;
+            if (needFix) {
+                c.style.width = `${LOGICAL_W}px`;
+                c.style.height = `${LOGICAL_H}px`;
+            }
+        }
+
+        // 관찰자/리스너 등록
+        window.addEventListener('resize', fitToParent, { passive: true });
+        window.addEventListener('orientationchange', fitToParent, { passive: true });
+        if ('visualViewport' in window) {
+            window.visualViewport.addEventListener('resize', fitToParent, { passive: true });
+            window.visualViewport.addEventListener('scroll', fitToParent, { passive: true });
+        }
+        new ResizeObserver(() => { fitToParent(); reassertCanvas(); })
+            .observe(document.documentElement);
+
+        // DOM 변경(Play 측이 캔버스/래퍼를 만지는 경우) 감지
+        new MutationObserver(() => { fitToParent(); reassertCanvas(); })
+            .observe(document.body, { attributes: true, childList: true, subtree: true });
+
+        // rAF 루프(마지막 방어막)
+        (function tick() {
+            reassertCanvas();
+            requestAnimationFrame(tick);
+        })();
+
+        // 첫 적용
+        fitToParent();
+    </script>
+
+    <!-- Unity 6000 계열 로더 -->
+    <script src="Build/WebBuild.loader.js"></script>
+    <script>
+        const canvas = document.getElementById('unity-canvas');
+        const loadingCover = document.getElementById('loading-cover');
+
+        const config = {
+            dataUrl: "Build/WebBuild.data.unityweb",
+            frameworkUrl: "Build/WebBuild.framework.js.unityweb",
+            codeUrl: "Build/WebBuild.wasm.unityweb",
+            streamingAssetsUrl: "StreamingAssets",
+            companyName: "DefaultCompany",
+            productName: "conflictGame",
+            productVersion: "0.1.0",
+            matchWebGLToCanvasSize: true, // 캔버스(1080x1920)에 버퍼 동기화
+            devicePixelRatio: 1           // 과스케일/저버퍼 방지
+        };
+
+        // 필요한 경우 CDN 캐시 무력화
+        // config.dataUrl      += "?v=5";
+        // config.frameworkUrl += "?v=5";
+        // config.codeUrl      += "?v=5";
+
+        createUnityInstance(canvas, config, () => { }).then(() => {
+            loadingCover.style.display = "none";
+            // 디버그 원하면:
+            // console.log('client:', canvas.clientWidth, canvas.clientHeight,
+            //             'buffer:', canvas.width, canvas.height, 'dpr:', window.devicePixelRatio);
+        });
+    </script>
+</body>
+</html>

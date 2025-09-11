@@ -2,19 +2,18 @@ using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.SceneManagement;
 using TMPro;
+using DG.Tweening;
 
 public class LobbyManager : MonoBehaviour
 {
     public static LobbyManager instance;
     [SerializeField] GameObject myDataPanel;
+    [SerializeField] GameObject sunCategoryPanel;
 
     [Header("UI")]
     public Button btnPublic;
     public Button btnPersonal;
     public Button btnGroup;
-    public Button btnLover;
-    public Button btnFamily;
-    public Button btnSchool;
     public TMP_InputField topicInput;
     public TMP_InputField counterpartInput;
     public Button startButton;
@@ -26,8 +25,8 @@ public class LobbyManager : MonoBehaviour
     int otherAge;
     int otherGender;
 
-    public string nickname,age,personality,job,academic,home;
-    public int gender;
+    [HideInInspector] public string nickname,age,personality,job,academic,home;
+    [HideInInspector] public int gender;
 
     void Awake()
     {
@@ -37,9 +36,6 @@ public class LobbyManager : MonoBehaviour
         if (btnPublic) btnPublic.onClick.AddListener(() => OnSelectCategory("공공"));
         if (btnPersonal) btnPersonal.onClick.AddListener(() => OnSelectCategory("개인"));
         if (btnGroup) btnGroup.onClick.AddListener(() => OnSelectCategory("조직"));
-        if (btnGroup) btnLover.onClick.AddListener(() => OnSelectCategory("연인"));
-        if (btnGroup) btnFamily.onClick.AddListener(() => OnSelectCategory("가족"));
-        if (btnGroup) btnSchool.onClick.AddListener(() => OnSelectCategory("학교"));
         if (startButton) startButton.onClick.AddListener(OnClickStart);
 
         otherAge = -1;
@@ -48,6 +44,8 @@ public class LobbyManager : MonoBehaviour
     private void Start()
     {
         UpdateMyData();
+        Debug.Log($"[WEBGL] Screen {Screen.width}x{Screen.height} dpiScale:{(Application.platform == RuntimePlatform.WebGLPlayer ? 1 : Screen.dpi)}");
+
     }
     public void UpdateMyData()
     {
@@ -79,6 +77,7 @@ public class LobbyManager : MonoBehaviour
         selectedCategory = category;
         if (messageText) messageText.text = $"대주제 선택: {category}";
         // 선택된 버튼만 하이라이트하고 싶다면, 색 전환/토글 처리 추가
+        sunCategoryPanel.transform.DOScale(Vector3.one, 0.5f);
     }
 
     void OnClickStart()
@@ -110,7 +109,7 @@ public class LobbyManager : MonoBehaviour
             if (messageText) messageText.text = "상대 성별을 골라주세요";
             return;
         }
-
+        sunCategoryPanel.transform.DOScale(Vector3.zero, 0.0f);
         // 세션에 저장
         if (GameSession.Instance == null)
         {

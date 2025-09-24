@@ -60,21 +60,25 @@
         // 전역 규칙 강제 주입(Play 래퍼/인라인 스타일을 덮어쓰도록 !important)
         (function injectGlobalRules() {
             const css = `
-            canvas, #unity-canvas {
-              width: ${LOGICAL_W}px !important;
-              height: ${LOGICAL_H}px !important;
-              max-width: ${LOGICAL_W}px !important;
-              max-height: ${LOGICAL_H}px !important;
-              display: block !important;
-              background: #000 !important;
-            }
-            /* Unity Play가 감싸는 래퍼들 대비: 캔버스 부모들도 가로세로 제약 제거 */
-            .unityContainer, .webgl-content, .gameContainer, #gameContainer {
-              width: auto !important; height: auto !important;
-              max-width: none !important; max-height: none !important;
-            }
-            html, body { background: #000 !important; }
-          `;
+              canvas, #unity-canvas {
+                width: 1080px !important;
+                height: 1920px !important;
+                max-width: 1080px !important;
+                max-height: 1920px !important;
+                display: block !important;
+                background: #000 !important;
+              }
+              .unityContainer, .webgl-content, .gameContainer, #gameContainer,
+              .unity-play-root, .webgl-wrapper, .game-wrapper {
+                width: auto !important;
+                height: auto !important;
+                max-width: none !important;
+                max-height: none !important;
+                aspect-ratio: auto !important;
+                contain: none !important;
+              }
+              html, body { background: #000 !important; }
+            `;
             const style = document.createElement('style');
             style.setAttribute('data-portrait-lock', '1');
             style.textContent = css;
@@ -160,6 +164,70 @@
         // 첫 적용
         fitToParent();
     </script>
+    <!-- === Firebase Auth (module) === -->
+<script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-auth-compat.js"></script>
+
+<script>
+  // 1) 네 프로젝트 값으로 교체
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyC4lgCzpIBBQFRplDf62vRnaLL21gXtJ7I",
+  authDomain: "conflictsi.firebaseapp.com",
+  projectId: "conflictsi",
+  storageBucket: "conflictsi.firebasestorage.app",
+  messagingSenderId: "841065072151",
+  appId: "1:841065072151:web:da9195e0b0b709b5c47e52",
+  measurementId: "G-7PBF59FSJS"
+};
+
+  // 2) 초기화
+  firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
+  const provider = new firebase.auth.GoogleAuthProvider();
+
+  // 3) Unity로 콜백
+  function sendToUnity(method, payload) {
+    const msg = typeof payload === "string" ? payload : JSON.stringify(payload || {});
+    const trySend = () => {
+      if (window.unityInstance && window.unityInstance.SendMessage) {
+        window.unityInstance.SendMessage("FirebaseBridge", method, msg);
+        return true;
+      }
+      return false;
+    };
+    if (!trySend()) {
+      let t = 30;
+      const h = setInterval(() => { if (trySend() || --t <= 0) clearInterval(h); }, 200);
+    }
+  }
+
+  // 4) 전역 함수(브릿지에서 호출)
+  window.firebaseSignIn = function () {
+    auth.signInWithRedirect(provider);
+  };
+  window.firebaseSignOut = function () {
+    auth.signOut()
+      .then(() => sendToUnity("OnAuthState", { signedIn:false }))
+      .catch(e => sendToUnity("OnAuthState", { signedIn:false, error: String(e && e.message || e) }));
+  };
+
+  // 5) 리다이렉트 결과 및 상태 전파
+  auth.getRedirectResult()
+      .catch(e => sendToUnity("OnFirebaseLogin", { error: String(e && e.message || e) }));
+
+  auth.onAuthStateChanged(async function(user){
+    if (user) {
+      const idToken = await user.getIdToken();
+      sendToUnity("OnAuthState", { signedIn:true, uid:user.uid, email:user.email, idToken });
+      sendToUnity("OnFirebaseLogin", {
+        uid:user.uid, displayName:user.displayName, email:user.email, photoURL:user.photoURL, idToken
+      });
+    } else {
+      sendToUnity("OnAuthState", { signedIn:false });
+    }
+  });
+</script>
 
     <!-- Unity 6000 계열 로더 -->
     <script src="Build/WebBuild.loader.js"></script>
@@ -175,21 +243,16 @@
             companyName: "DefaultCompany",
             productName: "conflictGame",
             productVersion: "0.1.0",
-            matchWebGLToCanvasSize: true, // 캔버스(1080x1920)에 버퍼 동기화
+            matchWebGLToCanvasSize: false, // 캔버스(1080x1920)에 버퍼 동기화
             devicePixelRatio: 1           // 과스케일/저버퍼 방지
         };
 
-        // 필요한 경우 CDN 캐시 무력화
-        // config.dataUrl      += "?v=5";
-        // config.frameworkUrl += "?v=5";
-        // config.codeUrl      += "?v=5";
 
-        createUnityInstance(canvas, config, () => { }).then(() => {
+        createUnityInstance(canvas, config, () => { })
+          .then((instance) => {
+            window.unityInstance = instance;
             loadingCover.style.display = "none";
-            // 디버그 원하면:
-            // console.log('client:', canvas.clientWidth, canvas.clientHeight,
-            //             'buffer:', canvas.width, canvas.height, 'dpr:', window.devicePixelRatio);
-        });
+          });
     </script>
 </body>
 </html>

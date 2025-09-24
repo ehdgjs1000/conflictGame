@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.SceneManagement;
+using UnityEngine.EventSystems;
 using TMPro;
 using DG.Tweening;
 
@@ -14,11 +15,13 @@ public class LobbyManager : MonoBehaviour
     public Button btnPublic;
     public Button btnPersonal;
     public Button btnGroup;
+    public Button btnURL;
     public TMP_InputField topicInput;
     public TMP_InputField counterpartInput;
     public Button startButton;
     public TMP_Text messageText;
     public TMP_Text subMessageText;
+    [SerializeField] TextMeshProUGUI[] subTopicTexts;
 
     string selectedCategory = null;
 
@@ -36,6 +39,7 @@ public class LobbyManager : MonoBehaviour
         if (btnPublic) btnPublic.onClick.AddListener(() => OnSelectCategory("공공"));
         if (btnPersonal) btnPersonal.onClick.AddListener(() => OnSelectCategory("개인"));
         if (btnGroup) btnGroup.onClick.AddListener(() => OnSelectCategory("조직"));
+        if (btnURL) btnURL.onClick.AddListener(() => OpenURL());
         if (startButton) startButton.onClick.AddListener(OnClickStart);
 
         otherAge = -1;
@@ -45,7 +49,10 @@ public class LobbyManager : MonoBehaviour
     {
         UpdateMyData();
         Debug.Log($"[WEBGL] Screen {Screen.width}x{Screen.height} dpiScale:{(Application.platform == RuntimePlatform.WebGLPlayer ? 1 : Screen.dpi)}");
-
+    }
+    public void OpenURL()
+    {
+        Application.OpenURL("https://forms.gle/X5Xp2oAZc5YZZgfa9");
     }
     public void UpdateMyData()
     {
@@ -75,11 +82,56 @@ public class LobbyManager : MonoBehaviour
     void OnSelectCategory(string category)
     {
         selectedCategory = category;
-        if (messageText) messageText.text = $"대주제 선택: {category}";
+        if (messageText) messageText.text = $"{category}";
         // 선택된 버튼만 하이라이트하고 싶다면, 색 전환/토글 처리 추가
         sunCategoryPanel.transform.DOScale(Vector3.one, 0.5f);
-    }
 
+        if(category == "공공")
+        {
+            subTopicTexts[0].text = "이웃";
+            subTopicTexts[1].text = "정책";
+            subTopicTexts[2].text = "사회";
+            subTopicTexts[3].text = "행정";
+        }else if (category == "개인")
+        {
+            btnPersonal.transform.DOLocalMoveX(-330,0);
+            subTopicTexts[0].text = "부부";
+            subTopicTexts[1].text = "연인";
+            subTopicTexts[2].text = "친구";
+            subTopicTexts[3].text = "이웃";
+        }
+        else if (category == "조직")
+        {
+            btnGroup.transform.DOLocalMoveX(-330, 0);
+            subTopicTexts[0].text = "회사전체";
+            subTopicTexts[1].text = "상사";
+            subTopicTexts[2].text = "부하";
+            subTopicTexts[3].text = "부서";
+        }
+    }
+    public void SelecSubCategory()
+    {
+        var go = EventSystem.current.currentSelectedGameObject;
+        if (go == null) return;
+        var button = go.GetComponent<Button>() ?? go.GetComponentInParent<Button>();
+        if (button == null) return;
+
+        // 버튼 하위에서 TMP_Text(=TextMeshProUGUI)를 찾음
+        var label = button.GetComponentInChildren<TMP_Text>(true); // 비활성 포함
+        if (label == null) return;
+        string text = label.text;
+        messageText.text = $"{selectedCategory}:{text}";
+
+    }
+    public void CallSubCategoryPanelScaleZero()
+    {
+        sunCategoryPanel.transform.DOScale(Vector3.zero,0);
+        btnPersonal.gameObject.SetActive(true);
+        btnGroup.gameObject.SetActive(true);
+        btnPublic.gameObject.SetActive(true);
+        btnPersonal.transform.DOLocalMoveX(0,0);
+        btnGroup.transform.DOLocalMoveX(330,0);
+    }
     void OnClickStart()
     {
         var topic = topicInput ? topicInput.text.Trim() : "";
@@ -106,7 +158,7 @@ public class LobbyManager : MonoBehaviour
         }
         if (otherGender == -1)
         {
-            if (messageText) messageText.text = "상대 성별을 골라주세요";
+            if (subMessageText) subMessageText.text = "상대 성별을 골라주세요";
             return;
         }
         sunCategoryPanel.transform.DOScale(Vector3.zero, 0.0f);

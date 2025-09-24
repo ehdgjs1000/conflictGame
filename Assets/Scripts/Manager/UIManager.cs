@@ -4,6 +4,7 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 using TMPro;
+using System;
 
 public class UIManager : MonoBehaviour
 {
@@ -13,11 +14,22 @@ public class UIManager : MonoBehaviour
     [SerializeField] OpenAIChat AI;
     [SerializeField] TextMeshProUGUI endReasonText;
     [SerializeField] TextMeshProUGUI topicText;
-
+    [SerializeField] TextMeshProUGUI mainTopicText;
+    [SerializeField] TextMeshProUGUI dateText;
+    [SerializeField] TextMeshProUGUI recommendText;
+    [SerializeField] TMP_InputField inputField;
+ 
     [SerializeField] Text[] scoreTexts;
     [SerializeField] Image[] scoreImages;
     [SerializeField] Image step9Image;
     [SerializeField] Sprite[] step9Sprites;
+    [SerializeField] Image otherImage;
+    [SerializeField] Sprite[] maleSprites;
+    [SerializeField] Sprite[] femaleSprites;
+    [SerializeField] Image[] finaleScoreImages;
+    [SerializeField] Text[] finalScoreText;
+    [SerializeField] Image finalStepImage;
+
     public GameObject endPanel;
     public TMP_Text feedbackText;
 
@@ -31,6 +43,8 @@ public class UIManager : MonoBehaviour
     public ScrollRect scrollRect;
     public Image conversationProgressBar;
 
+    public int otherAge, otherGender;
+
     private void Awake()
     {
         // 싱글톤 초기화
@@ -41,9 +55,25 @@ public class UIManager : MonoBehaviour
         }
         Instance = this;
     }
+    private void Start()
+    {
+        otherAge = GameSession.Instance.otherAge;
+        otherGender = GameSession.Instance.otherGender;
+        ChangeProfileImage(50);
+    }
+    public IEnumerator BlockIF()
+    {
+        inputField.interactable = false;
+        yield return new WaitForSeconds(3.0f);
+        inputField.interactable = true;
+    }
     public void UpdateTopic(string _topic)
     {
         topicText.text = _topic;
+        mainTopicText.text = _topic;
+        DateTime now = DateTime.Now;
+        string formatted = now.ToString("yyyy-MM-dd HH:mm"); // 날짜+시간
+        dateText.text = formatted;
     }
     public float GetAverage(string type)
     {
@@ -52,11 +82,29 @@ public class UIManager : MonoBehaviour
         else if(type == "solution") return sumSolution / evalCount;
         else return sumRealism / evalCount;
     }
-    public void ShowEndPanel(string feedback, string reason)
+    public void ShowEndPanel(string feedback, string reason, string recommend,float[] scores)
     {
         if (endPanel) endPanel.SetActive(true);
         if (feedbackText) feedbackText.text = feedback;
         if (endReasonText) endReasonText.text = reason;
+        if (recommendText) recommendText.text = recommend;
+
+        float finalScore = scores[0] + scores[1] + scores[2] + scores[3];
+        finaleScoreImages[0].fillAmount = finalScore / 100;
+        finaleScoreImages[1].fillAmount = scores[0] / 25;
+        finaleScoreImages[2].fillAmount = scores[1] / 25;
+        finaleScoreImages[3].fillAmount = scores[2] / 25;
+        finaleScoreImages[4].fillAmount = scores[3] / 25;
+
+        finalScoreText[0].text = finalScore.ToString("N2") + "/100";
+        finalScoreText[1].text = scores[0].ToString("N2") + "/25";
+        finalScoreText[2].text = scores[1].ToString("N2") + "/25";
+        finalScoreText[3].text = scores[2].ToString("N2") + "/25";
+        finalScoreText[4].text = scores[3].ToString("N2") + "/25";
+
+        finalScore = Mathf.Clamp(finalScore, 0f, 100f);
+        int scoreIndex = Mathf.FloorToInt(finalScore / 10f);
+        finalStepImage.sprite = step9Sprites[scoreIndex];
     }
     public void ResetAverages()
     {
@@ -71,10 +119,10 @@ public class UIManager : MonoBehaviour
         for (int i = 0; i < scores.Length; i++)
         {
             scoreSum += scores[i];
-            scoreTexts[i].text = scores[i].ToString("0.#"); ;
+            scoreTexts[i].text = scores[i].ToString("0.#/25"); ;
             scoreImages[i].fillAmount = scores[i]/25;
         }
-        scoreTexts[4].text = scoreSum.ToString("0.#"); ;
+        scoreTexts[4].text = scoreSum.ToString("0.#/100"); ;
         scoreImages[4].fillAmount = scoreSum / 100.0f;
         if(scoreSum <= 20 && AI.conversationCount > 5) AI.EndConversation("갈등이 과도하게 고조되어 시뮬레이션을 종료합니다.");
         scoreSum = Mathf.Clamp(scoreSum, 0f, 100f);
@@ -115,6 +163,7 @@ public class UIManager : MonoBehaviour
     public void UpdateScoreUI(ConflictScore s)
     {
         // 1) 누적
+        Debug.Log(s);
         sumEmpathy += Mathf.Clamp(s.empathy, 0f, 25f);
         sumClarity += Mathf.Clamp(s.clarity, 0f, 25f);
         sumSolution += Mathf.Clamp(s.solution, 0f, 25f);
@@ -131,6 +180,30 @@ public class UIManager : MonoBehaviour
         // 3) UI 업데이트 (UIManager는 0~25 값으로 받음)
         SetScores(new float[] {avgEmpathy, avgClarity, avgSolution, avgRealism});
 
+        // 4) 프로필 표정 업데이트
+        float avgTotal = avgEmpathy + avgClarity + avgSolution + avgRealism;
+        if(evalCount > 5)
+        {
+            ChangeProfileImage(avgTotal);
+        }
+        
+    }
+    public void ChangeProfileImage(float _avgTotal)
+    {
+        int totalPhase;
+        if (_avgTotal <= 33.3) totalPhase = 2;
+        else if (_avgTotal > 33.3 && _avgTotal <= 66.6) totalPhase = 1;
+        else totalPhase = 0;
+        if (otherGender == 0)
+        {
+            int ageRange = (otherAge / 10) - 1;
+            otherImage.sprite = maleSprites[(ageRange * 3) + totalPhase];
+        }
+        else
+        {
+            int ageRange = (otherAge / 10) - 1;
+            otherImage.sprite = femaleSprites[(ageRange * 3) + totalPhase];
+        }
     }
     public void ToLobbyOnClick()
     {

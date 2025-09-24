@@ -42,6 +42,7 @@ public class OpenAIChat : MonoBehaviour
 
     [Header("UI: 입력/버튼")]
     [SerializeField] TextMeshProUGUI remainCountText;
+    [SerializeField] GameObject gameEndCheckPanel; 
     public TMP_InputField inputTMP;
     public TextMeshProUGUI placeHolderText;
     public Button sendButton;
@@ -60,6 +61,9 @@ public class OpenAIChat : MonoBehaviour
     private int escalatedStreak = 0;
     bool _isBusy;
     public int conversationCount = 0;
+    string conversationStyle;
+
+    int _otherAge,_otherGender = 0;
 
     struct Thresholds
     {
@@ -132,17 +136,46 @@ public class OpenAIChat : MonoBehaviour
         int otherGender = GameSession.Instance ? GameSession.Instance.otherGender : 0;
         string otherGenderText = (otherGender == 0) ? "남자" : "여자";
 
+        if (conversationCount <= 3)
+        {
+            conversationStyle = "상대방의 대화 방식에 따라 비슷한 방식으로 대화하라";
+        }
+        else if (conversationCount > 3 && conversationCount <= 10)
+        {
+            conversationStyle = "반론을 제기하며 비판적으로 대화하여 갈등을 고조시켜라.";
+        }
+        else
+        {
+            conversationStyle = "갈등고조단계에 맞게 대화하라";
+        }
         return
           $"너는 갈등 시뮬레이터의 '{counterpart}'(이)다. " +
           $"대주제는 '{cat}', 메인 주제는 '{topic}'이다. " +
           $"너의 나이는 '{age}', 성별은 '{gender}', 성격유형은 '{mbti}'이다. " +
+          $"너의 대화 스타일은 '{conversationStyle}'이다. 꼭 명심하라. " +
           $"상대방의 나이는 '{otherAge}대', 상대방의 성별은 '{otherGenderText}'이다. " +
           $"너의 나이, 성격에 맞는 현실적 제약과 상황을 반영하라. 정확히 2줄로만 답하라(각 60자 이내). 한국어.";
     }
     public void EndConversationOnClick()
     {
-        if (conversationCount <= 5) Debug.Log("아직 끝낼 수 없다");
-        else EndConversation("대화종료");
+        if (conversationCount <= 4) Debug.Log("아직 끝낼 수 없다");
+        else 
+        {
+            gameEndCheckPanel.SetActive(true);
+            //EndConversation("대화종료");
+        }
+    }
+    public void EndConversationCheckClick(bool _check)
+    {
+        if (_check)
+        {
+            EndConversation("대화종료");
+            gameEndCheckPanel.SetActive(false);
+        }
+        else
+        {
+            gameEndCheckPanel.SetActive(false);
+        }
     }
     public async void EndConversation(string _reason)
     {
@@ -153,15 +186,19 @@ public class OpenAIChat : MonoBehaviour
         float cla = UIManager.Instance.GetAverage("clarity");
         float sol = UIManager.Instance.GetAverage("solution");
         float rea = UIManager.Instance.GetAverage("realism");
+        float[] scores = new float[4] {emp,cla,sol, rea};
 
         string prompt =
             $"플레이어의 대화 결과:\n" +
             $"공감 {emp:0.#}, 명확성 {cla:0.#}, 해결지향 {sol:0.#}, 현실적합성 {rea:0.#}.\n" +
             "이 점수를 바탕으로 더 좋은 대화 방식을 제안해줘. " +
             "구체적이고 간단하게 3줄 이내 한국어로 각 줄은 번호로 구분해줘.";
-
         var feedback = await SendChatOnceAsync(feedBackPrompt, prompt);
-        UIManager.Instance.ShowEndPanel(feedback,_reason);
+
+        string recommendPromt = $"플레이어가 전송한 대화 중 고처야할 멘트가 있다면,\n" +
+            "말한 내용을 다시 알려주고 다음줄로 수정했으면 하는 방식을 구체적이고 간단하게 1~2줄 이내 한국어로 알려줘.";
+        var recommend = await SendChatOnceAsync(feedBackPrompt, recommendPromt);
+        UIManager.Instance.ShowEndPanel(feedback,_reason, recommend, scores);
     }
 
     public async void SendMessageOnClick()
@@ -170,13 +207,14 @@ public class OpenAIChat : MonoBehaviour
 
         var userText = GetInputText();
         if (string.IsNullOrWhiteSpace(userText)) return;
-
+        //StartCoroutine(UIManager.Instance.BlockIF());
         UIManager.Instance.AddChatMessage(userText, true);
         SetBusy(true);
         await RunTurn(userText);
         ClearInput();
         SetBusy(false);
         conversationCount++;
+        BuildSystemPrompt();
         remainCountText.text = $"{conversationCount}/20";
         if (conversationCount > 20) EndConversation("갈등을 해결하지 못하였습니다.");
     }
@@ -604,5 +642,9 @@ public class OpenAIChat : MonoBehaviour
 
     string GetInputText() => inputTMP ? inputTMP.text : "";
     void ClearInput() { if (inputTMP) inputTMP.text = ""; }
-    void SetBusy(bool on) { _isBusy = on; if (sendButton) sendButton.interactable = !on; }
+    void SetBusy(bool on) 
+    {   _isBusy = on; 
+        if (sendButton) sendButton.interactable = !on;
+        if (inputTMP) inputTMP.interactable = !on;
+    }
 }

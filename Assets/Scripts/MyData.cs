@@ -7,7 +7,6 @@ public class MyData : MonoBehaviour
     [SerializeField] TextMeshProUGUI messageText;
     public TMP_InputField nickNameInputField;
     public TMP_InputField ageInputField;
-    public TMP_InputField personalityInputField;
     public TMP_InputField jobInputField;
     public TMP_InputField academicInputField;
     public TMP_InputField homeInputField;
@@ -36,7 +35,6 @@ public class MyData : MonoBehaviour
         gender = LobbyManager.instance.gender;
         if (nickname != null) nickNameInputField.text = nickname;
         if (age != null) ageInputField.text = age;
-        if (personality != null) personalityInputField.text = personality;
         if (job != null) jobInputField.text = job;
         if (academic != null) academicInputField.text = academic;
         if (home != null) homeInputField.text = home;
@@ -53,7 +51,6 @@ public class MyData : MonoBehaviour
         int value;
         string nickNameIF = nickNameInputField.text;
         string ageIF = ageInputField.text;
-        string personalityIF = personalityInputField.text;
         string jobIF = jobInputField.text;
         string academicIF = academicInputField.text;  
         string homeIF = homeInputField.text;
@@ -72,11 +69,7 @@ public class MyData : MonoBehaviour
             NofieldMessagePopUp("나이을 입력해주세요");
             return;
         }
-        if (personalityIF== null)
-        {
-            NofieldMessagePopUp("성격유형을 입력해주세요");
-            return ;
-        }
+
         if (jobIF == null)
         {
             NofieldMessagePopUp("직업을 입력해주세요");
@@ -92,11 +85,8 @@ public class MyData : MonoBehaviour
             NofieldMessagePopUp("거주지역을 입력해주세요");
             return;
         }
-        foreach (string str in mbti)
-        {
-            if (string.Compare(str, personalityIF, true) == 0) hasMBTI = true;
-        }
-        if(!hasMBTI) return;
+
+        //if(!hasMBTI) return;
         if (int.TryParse(ageIF, out value))
         {
             PlayerPrefs.SetInt("Age", int.Parse(ageIF));
@@ -114,7 +104,7 @@ public class MyData : MonoBehaviour
         PlayerPrefs.SetString("Job",jobIF);
         PlayerPrefs.SetString("Academic",academicIF);
         PlayerPrefs.SetString("Home",homeIF);
-        PlayerPrefs.SetString("Personality", personalityIF);
+        //PlayerPrefs.SetString("Personality", personalityIF);
         Debug.Log(nickNameIF);
         Debug.Log(ageIF);
         Debug.Log("저장 완료");
